@@ -1,0 +1,276 @@
+[gd_scene format=3 uid="uid://dn56ot17a81l4"]
+
+[sub_resource type="GDScript" id="GDScript_57qmd"]
+resource_name = "main"
+script/source = "extends Control
+
+@onready var canvas: Node2D = $HBoxContainer/SubViewportContainer/SubViewport/Canvas
+@onready var color_picker: ColorPicker = $HBoxContainer/Sidebar/ColorPickerButton
+@onready var pencil_btn: Button = $HBoxContainer/Sidebar/PencilButton
+@onready var eraser_btn: Button = $HBoxContainer/Sidebar/EraserButton
+@onready var fill_btn: Button = $HBoxContainer/Sidebar/FillButton
+@onready var export_btn: Button = $HBoxContainer/Sidebar/ExportButton
+
+func _ready() -> void:
+	color_picker.color = canvas.active_color
+	color_picker.color_changed.connect(func(c: Color): canvas.active_color = c)
+	pencil_btn.pressed.connect(func(): canvas.active_tool = canvas.Tool.PENCIL)
+	eraser_btn.pressed.connect(func(): canvas.active_tool = canvas.Tool.ERASER)
+	fill_btn.pressed.connect(func(): canvas.active_tool = canvas.Tool.FILL)
+	export_btn.pressed.connect(_export_png)
+
+func _export_png() -> void:
+	var err = canvas.img.save_png(\"user://sprite_export.png\")
+	if err == OK:
+		print(\"Saved to: \", ProjectSettings.globalize_path(\"user://sprite_export.png\"))
+"
+
+[sub_resource type="GDScript" id="GDScript_g4v7s"]
+resource_name = "camera_controller"
+script/source = "extends Camera2D
+
+@export var min_zoom: float = 1.0
+@export var max_zoom: float = 40.0
+@export var zoom_factor: float = 1.15
+
+var is_panning: bool = false
+
+func _ready() -> void:
+	zoom = Vector2(8.0, 8.0) # Start zoomed in for a 64x64 canvas
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			is_panning = event.pressed
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_change_zoom(zoom_factor)
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_change_zoom(1.0 / zoom_factor)
+
+	elif event is InputEventMouseMotion and is_panning:
+		position -= event.relative / zoom
+
+func _change_zoom(factor: float) -> void:
+	var mouse_before := get_global_mouse_position()
+	var new_zoom := clampf(zoom.x * factor, min_zoom, max_zoom)
+	zoom = Vector2(new_zoom, new_zoom)
+	# Keep the pixel under the cursor anchored while zooming
+	var mouse_after := get_global_mouse_position()
+	position += mouse_before - mouse_after
+"
+
+[sub_resource type="GDScript" id="GDScript_yf5fn"]
+resource_name = "canvas"
+script/source = "extends Node2D
+
+enum Tool { PENCIL, ERASER, FILL }
+
+@export var canvas_size: Vector2i = Vector2i(64, 64)
+
+var active_tool: Tool = Tool.PENCIL
+var active_color: Color = Color.BLACK
+
+var img: Image
+var tex: ImageTexture
+
+var is_drawing: bool = false
+var last_pixel: Vector2i = Vector2i(-1, -1)
+
+# Undo/Redo state
+var undo_redo := UndoRedo.new()
+var stroke_before: Dictionary = {}
+var stroke_after: Dictionary = {}
+
+
+func _ready() -> void:
+	img = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)
+	tex = ImageTexture.create_from_image(img)
+	get_parent().get_node(\"Camera2D\").position = Vector2(canvas_size) / 2.0
+	queue_redraw()
+
+
+func _draw() -> void:
+	# Grey backdrop so transparent pixels are visible
+	draw_rect(Rect2(Vector2.ZERO, Vector2(canvas_size)), Color(0.2, 0.2, 0.2))
+	draw_texture(tex, Vector2.ZERO)
+	# Crisp 1px canvas border
+	draw_rect(Rect2(Vector2.ZERO, Vector2(canvas_size)), Color.WHITE, false, -1.0)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.ctrl_pressed and event.keycode == KEY_Z:
+			if event.shift_pressed:
+				undo_redo.redo()
+			else:
+				undo_redo.undo()
+		elif event.ctrl_pressed and event.keycode == KEY_Y:
+			undo_redo.redo()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			var px := _get_mouse_pixel()
+			if event.pressed:
+				if not _in_bounds(px):
+					return
+				var draw_color := Color(0, 0, 0, 0) if (event.button_index == MOUSE_BUTTON_RIGHT or active_tool == Tool.ERASER) else active_color
+
+				if active_tool == Tool.FILL and event.button_index == MOUSE_BUTTON_LEFT:
+					_start_stroke()
+					_flood_fill(px, draw_color)
+					_commit_stroke(\"Flood Fill\")
+				else:
+					is_drawing = true
+					last_pixel = px
+					_start_stroke()
+					_set_pixel_tracked(px, draw_color)
+					tex.update(img)
+			elif is_drawing:
+				is_drawing = false
+				_commit_stroke(\"Draw Stroke\")
+
+	elif event is InputEventMouseMotion and is_drawing:
+		var px := _get_mouse_pixel()
+		if px != last_pixel:
+			var draw_color := Color(0, 0, 0, 0) if (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or active_tool == Tool.ERASER) else active_color
+			_draw_line_pixels(last_pixel, px, draw_color)
+			last_pixel = px
+			tex.update(img)
+
+
+func _get_mouse_pixel() -> Vector2i:
+	return Vector2i(get_local_mouse_position().floor())
+
+
+func _in_bounds(p: Vector2i) -> bool:
+	return p.x >= 0 and p.y >= 0 and p.x < canvas_size.x and p.y < canvas_size.y
+
+
+func _set_pixel_tracked(p: Vector2i, color: Color) -> void:
+	if not _in_bounds(p):
+		return
+	var current := img.get_pixelv(p)
+	if current == color:
+		return
+	if not stroke_before.has(p):
+		stroke_before[p] = current
+	stroke_after[p] = color
+	img.set_pixelv(p, color)
+
+
+func _draw_line_pixels(p0: Vector2i, p1: Vector2i, color: Color) -> void:
+	var dx: int = abs(p1.x - p0.x)
+	var dy: int = -abs(p1.y - p0.y)
+	var sx: int = 1 if p0.x < p1.x else -1
+	var sy: int = 1 if p0.y < p1.y else -1
+	var err: int = dx + dy
+
+	while true:
+		_set_pixel_tracked(p0, color)
+		if p0 == p1:
+			break
+		var e2: int = 2 * err
+		if e2 >= dy:
+			err += dy
+			p0.x += sx
+		if e2 <= dx:
+			err += dx
+			p0.y += sy
+
+
+func _flood_fill(start: Vector2i, fill_color: Color) -> void:
+	var target_color := img.get_pixelv(start)
+	if target_color == fill_color:
+		return
+
+	var queue: Array[Vector2i] = [start]
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_front()
+		if not _in_bounds(p) or img.get_pixelv(p) != target_color:
+			continue
+		_set_pixel_tracked(p, fill_color)
+		queue.append(p + Vector2i.RIGHT)
+		queue.append(p + Vector2i.LEFT)
+		queue.append(p + Vector2i.DOWN)
+		queue.append(p + Vector2i.UP)
+	tex.update(img)
+
+
+func _start_stroke() -> void:
+	stroke_before = {}
+	stroke_after = {}
+
+
+func _commit_stroke(action_name: String) -> void:
+	if stroke_before.is_empty():
+		return
+	undo_redo.create_action(action_name)
+	undo_redo.add_do_method(_apply_pixels.bind(stroke_after.duplicate()))
+	undo_redo.add_undo_method(_apply_pixels.bind(stroke_before.duplicate()))
+	undo_redo.commit_action(false)
+
+
+func _apply_pixels(pixel_map: Dictionary) -> void:
+	for p: Vector2i in pixel_map:
+		img.set_pixelv(p, pixel_map[p])
+	tex.update(img)
+"
+
+[node name="main" type="Control" unique_id=669162489]
+layout_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.1651235
+grow_horizontal = 2
+grow_vertical = 2
+script = SubResource("GDScript_57qmd")
+metadata/_edit_use_anchors_ = true
+
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=755537165]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="Sidebar" type="VBoxContainer" parent="HBoxContainer" unique_id=593568286]
+layout_mode = 2
+
+[node name="PencilButton" type="Button" parent="HBoxContainer/Sidebar" unique_id=898533121]
+layout_mode = 2
+text = "Pencil"
+
+[node name="EraserButton" type="Button" parent="HBoxContainer/Sidebar" unique_id=501338192]
+layout_mode = 2
+text = "Eraser"
+
+[node name="FillButton" type="Button" parent="HBoxContainer/Sidebar" unique_id=72860966]
+layout_mode = 2
+text = "Fill"
+
+[node name="ExportButton" type="Button" parent="HBoxContainer/Sidebar" unique_id=1858874896]
+layout_mode = 2
+text = "Export"
+
+[node name="ColorPickerButton" type="ColorPicker" parent="HBoxContainer/Sidebar" unique_id=1750243903]
+layout_mode = 2
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HBoxContainer" unique_id=2043562135]
+layout_mode = 2
+size_flags_horizontal = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="HBoxContainer/SubViewportContainer" unique_id=1634734050]
+handle_input_locally = false
+size = Vector2i(850, 755)
+render_target_update_mode = 4
+
+[node name="Camera2D" type="Camera2D" parent="HBoxContainer/SubViewportContainer/SubViewport" unique_id=162445028]
+script = SubResource("GDScript_g4v7s")
+
+[node name="Canvas" type="Node2D" parent="HBoxContainer/SubViewportContainer/SubViewport" unique_id=95769595]
+texture_filter = 1
+script = SubResource("GDScript_yf5fn")
