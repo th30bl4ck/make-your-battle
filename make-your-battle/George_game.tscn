@@ -73,7 +73,7 @@ tracks/1/keys = {
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("../zxz:position")
+tracks/2/path = NodePath(".:position")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
@@ -113,7 +113,7 @@ tracks/1/keys = {
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("../zxz:position")
+tracks/2/path = NodePath(".:position")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
@@ -129,7 +129,7 @@ _data = {
 &"platmove": SubResource("Animation_ryrav")
 }
 
-[node name="game" type="Node2D" unique_id=994893783]
+[node name="George_game" type="Node2D" unique_id=994893783]
 position = Vector2(466, 30)
 
 [node name="CharacterBody2D" parent="." unique_id=1992724184 instance=ExtResource("1_80nbo")]
@@ -155,7 +155,7 @@ libraries/ = SubResource("AnimationLibrary_7jktm")
 autoplay = &"platform_move"
 
 [node name="AnimatableBody2D2" parent="." unique_id=75260113 instance=ExtResource("3_feb5d")]
-position = Vector2(-338.99994, 384)
+position = Vector2(-1625, 391)
 scale = Vector2(2.975, 2.975)
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="AnimatableBody2D2" unique_id=2119233466]
@@ -163,7 +163,7 @@ libraries/ = SubResource("AnimationLibrary_eow3j")
 autoplay = &"platmove"
 
 [node name="zxz" parent="." unique_id=1596056574 instance=ExtResource("3_feb5d")]
-position = Vector2(-339, 384)
+position = Vector2(-1625, 391)
 scale = Vector2(2.975, 2.975)
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="zxz" unique_id=388714613]
