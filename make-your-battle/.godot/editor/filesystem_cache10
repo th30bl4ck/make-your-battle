@@ -1,3 +1,7 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1793819882
-icon.svg::CompressedTexture2D::6667997156635495211::1793819387::1793819393::1::::<><><>0<>0<>101a3b9e66d0fa885c9a62948c08c368<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
+::res://::1793827790
+game.tscn::PackedScene::7277884754307133478::1793827792::0::1::::<><><>0<>0<><>::uid://b8sxk0dmxje78::::res://player.tscn<>uid://c2aa66pals82r::::res://icon.svg<>uid://m0bp2c0mwd1e::::res://tscn/platform.tscn
+icon.svg::CompressedTexture2D::6667997156635495211::1793821933::1793821933::1::::<><><>0<>0<>101a3b9e66d0fa885c9a62948c08c368<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
+::res://tscn/::1793827790
+platform.tscn::PackedScene::893964493782076308::1793827154::0::1::::<><><>0<>0<><>::uid://c2aa66pals82r::::res://icon.svg
+player.tscn::PackedScene::4741226990388410473::1793827350::0::1::::<><><>0<>0<><>::uid://c2aa66pals82r::::res://icon.svg
